@@ -12,14 +12,14 @@ const parcelPayload=f=>({schema:'geochain-parcel-v1',feature:f});
 const parcelDigest=async f=>hex(encode(parcelPayload(f)));
 window.geochainDigest=parcelDigest;
 const base64=u8=>{let s='';for(let i=0;i<u8.length;i++)s+=String.fromCharCode(u8[i]);return btoa(s)};
-const signedBytes=value=>{if(value instanceof Uint8Array)return value;if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);if(value instanceof ArrayBuffer)return new Uint8Array(value);if(Array.isArray(value))return Uint8Array.from(value);if(typeof value==='string')return Uint8Array.from(atob(value),c=>c.charCodeAt(0));throw Error('Lute trả chữ ký sai định dạng');};
+const signedBytes=value=>{if(value instanceof Uint8Array)return value;if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);if(value instanceof ArrayBuffer)return new Uint8Array(value);if(Array.isArray(value))return Uint8Array.from(value);throw Error('Lute phải trả về chữ ký nhị phân Uint8Array, không phải Base64.');};
 const refresh=()=>{$('wallet-connect').textContent=address?'Lute: '+address.slice(0,7)+'…'+address.slice(-5):'Kết nối Lute Wallet';$('chain-send').disabled=busy||!window.geochainSelectedParcel?.();$('faucet').hidden=!address};
 window.addEventListener('geochain:parcel-selected',refresh);
 async function ensureMasterConnected(){
  if(address===MASTER)return MASTER;
  msg('Đang kết nối Lute Wallet với ví chủ trên TestNet…');
  const accounts=await lute.connect('testnet-v1.0');
- const authorized=(accounts||[]).map(a=>typeof a==='string'?a:a?.address).filter(Boolean);
+ const authorized=(Array.isArray(accounts)?accounts:accounts?.addrs||[]).map(a=>typeof a==='string'?a:a?.address).filter(Boolean);
  if(!authorized.includes(MASTER)){
    address=null;refresh();
    throw Error('Lute chưa cấp quyền ký cho ví chủ 6S4S…WC4I. Hãy chọn đúng tài khoản trong cửa sổ Lute.');
@@ -47,7 +47,7 @@ $('chain-send').addEventListener('click',async()=>{
  const txn=algosdk.makePaymentTxnWithSuggestedParamsFromObject({sender:address,receiver:address,amount:0n,note,suggestedParams:params});
  const unsigned=base64(algosdk.encodeUnsignedTransaction(txn));
  msg('Xác nhận ký trên Lute TestNet…');
- const signed=await lute.signTxns([{txn:unsigned,signers:[MASTER]}]);
+ const signed=await lute.signTxns([{txn:unsigned}]);
  if(!signed?.[0])throw Error('Ví không trả về chữ ký');
  const submitted=await algod.sendRawTransaction(signedBytes(signed[0])).do();
  const txid=submitted.txid||submitted.txId||txn.txID();
@@ -65,6 +65,7 @@ refresh();
 
 
 const indexerBase='https://testnet-idx.algonode.cloud';
+const fromBase64=txt=>{if(typeof txt!=='string')throw Error('Ghi chú không phải Base64');const cleaned=txt.trim().replace(/-/g,'+').replace(/_/g,'/');if(!/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned))throw Error('Ghi chú không hợp lệ');const padded=cleaned+'='.repeat((4-cleaned.length%4)%4);return Uint8Array.from(atob(padded),c=>c.charCodeAt(0))};
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const when=seconds=>seconds?new Date(Number(seconds)*1000).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—';
 const accountUrl='https://lora.algokit.io/testnet/account/'+MASTER;
@@ -74,7 +75,7 @@ const txDetailsUrl=id=>'https://lora.algokit.io/testnet/transaction/'+encodeURIC
 function parseGeoNote(tx){
  try{
   if(!tx.note)return null;
-  const raw=Uint8Array.from(atob(tx.note),c=>c.charCodeAt(0));
+  const raw=fromBase64(tx.note);
   const parsed=JSON.parse(new TextDecoder().decode(raw));
   return parsed?.v===1&&typeof parsed.p==='string'&&/^[0-9a-f]{64}$/i.test(parsed.h||'')?parsed:null;
  }catch{return null}
@@ -93,7 +94,7 @@ async function showReference(){
   const sender=String(t.sender||'');
   const receiver=String(payment.receiver||'');
   let noteText='Không có ghi chú';
-  try{if(t.note)noteText=new TextDecoder().decode(Uint8Array.from(atob(t.note),c=>c.charCodeAt(0)))}catch{noteText='Không đọc được ghi chú UTF-8'}
+  try{if(t.note)noteText=new TextDecoder().decode(fromBase64(t.note))}catch{noteText='Không đọc được ghi chú UTF-8'}
   const linkAccount=id=>'<a href="https://lora.algokit.io/testnet/account/'+encodeURIComponent(id)+'" target="_blank" rel="noopener noreferrer">'+safe(id)+'</a>';
   featured.innerHTML='<div class="tx-head"><div><span class="tx-kicker">CHI TIẾT GIAO DỊCH · ALGORAND TESTNET</span><h4>Giao dịch chuyển ALGO</h4></div><span class="tx-badge">Đã xác nhận</span></div>'+
   '<div class="tx-metrics"><div><small>Số ALGO chuyển</small><strong>'+amount+' ALGO</strong></div><div><small>Phí mạng</small><strong>'+fee+' ALGO</strong></div><div><small>Khối xác nhận</small><strong><a target="_blank" rel="noopener noreferrer" href="https://lora.algokit.io/testnet/block/'+encodeURIComponent(t['confirmed-round'])+'">'+safe(t['confirmed-round'])+'</a></strong></div></div>'+
@@ -103,7 +104,10 @@ async function showReference(){
  }catch(e){featured.textContent='Chưa đọc được giao dịch tham chiếu từ Indexer: '+(e?.message||e)}
 }
 
+let updating=false;
 async function updateActivity(){
+ if(updating)return;
+ updating=true;
  const button=$('tx-refresh');button.disabled=true;$('tx-summary').textContent='Đang tải hoạt động TestNet…';
  try{
  const [health,acct,response]=await Promise.all([
@@ -130,7 +134,9 @@ async function updateActivity(){
    list.appendChild(node);
  }
  }catch(e){$('network-status').textContent='Không truy cập được Algod/Indexer: '+(e?.message||e);$('tx-summary').textContent='Không có dữ liệu mới';}
- finally{button.disabled=false}
+ finally{button.disabled=false;updating=false;const stamp=$('tx-updated');if(stamp)stamp.textContent='Cập nhật lần cuối: '+new Date().toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'})+' · Tự kiểm tra mỗi 15 giây';}
 }
 $('tx-refresh').onclick=updateActivity;
 updateActivity();
+setInterval(()=>{if(document.visibilityState==='visible')updateActivity()},15000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')updateActivity()});
