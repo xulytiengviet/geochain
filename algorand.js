@@ -69,7 +69,19 @@ async function showReference(){
   const {transaction:t}=await response.json();
   if(!t||!(t.sender===MASTER||t['payment-transaction']?.receiver===MASTER))throw Error('Giao dịch không thuộc ví chủ');
   const note=parseGeoNote(t);
-  featured.innerHTML='<strong>Giao dịch tham chiếu đã xác nhận</strong><div>TXID: <a target="_blank" rel="noopener noreferrer" href="'+txDetailsUrl(REFERENCE_TX)+'">'+REFERENCE_TX+'</a></div><div>Round: '+safe(t['confirmed-round'])+' · '+safe(when(t['round-time']))+' · phí '+safe(t.fee)+' µALGO</div><div>'+ (note?'◈ GeoChain · Mã thửa '+safe(note.p)+' · Hash '+safe(note.h):'Giao dịch ví TestNet thông thường — chưa có bằng chứng GeoChain trong note; không thể đồng bộ với một thửa cụ thể') +'</div>';
+  const payment=t['payment-transaction']||{};
+  const amount=(Number(payment.amount||0)/1e6).toLocaleString('vi-VN',{maximumFractionDigits:6});
+  const fee=(Number(t.fee||0)/1e6).toLocaleString('vi-VN',{maximumFractionDigits:6});
+  const sender=String(t.sender||'');
+  const receiver=String(payment.receiver||'');
+  let noteText='Không có ghi chú';
+  try{if(t.note)noteText=new TextDecoder().decode(Uint8Array.from(atob(t.note),c=>c.charCodeAt(0)))}catch{noteText='Không đọc được ghi chú UTF-8'}
+  const linkAccount=id=>'<a href="https://lora.algokit.io/testnet/account/'+encodeURIComponent(id)+'" target="_blank" rel="noopener noreferrer">'+safe(id)+'</a>';
+  featured.innerHTML='<div class="tx-head"><div><span class="tx-kicker">CHI TIẾT GIAO DỊCH · ALGORAND TESTNET</span><h4>Giao dịch chuyển ALGO</h4></div><span class="tx-badge">Đã xác nhận</span></div>'+
+  '<div class="tx-metrics"><div><small>Số ALGO chuyển</small><strong>'+amount+' ALGO</strong></div><div><small>Phí mạng</small><strong>'+fee+' ALGO</strong></div><div><small>Khối xác nhận</small><strong><a target="_blank" rel="noopener noreferrer" href="https://lora.algokit.io/testnet/block/'+encodeURIComponent(t['confirmed-round'])+'">'+safe(t['confirmed-round'])+'</a></strong></div></div>'+
+  '<div class="tx-flow"><div><small>VÍ GỬI</small>'+linkAccount(sender)+'</div><span class="tx-arrow">→</span><div><small>VÍ NHẬN</small>'+linkAccount(receiver)+'</div></div>'+
+  '<dl class="tx-facts"><div><dt>Mã giao dịch</dt><dd><a target="_blank" rel="noopener noreferrer" href="'+txDetailsUrl(REFERENCE_TX)+'">'+REFERENCE_TX+'</a></dd></div><div><dt>Loại giao dịch</dt><dd>Chuyển ALGO (Payment)</dd></div><div><dt>Thời gian (Việt Nam)</dt><dd>'+safe(when(t['round-time']))+'</dd></div><div><dt>Ghi chú UTF-8</dt><dd>'+safe(noteText)+'</dd></div><div><dt>Đối chiếu hồ sơ GeoChain</dt><dd>'+(note?'Mã thửa: '+safe(note.p)+' · SHA-256: '+safe(note.h):'Chưa có mã thửa và SHA-256 trong ghi chú; đây không phải giao dịch xác thực thửa đất.')+'</dd></div></dl>'+
+  '<a class="tx-open" target="_blank" rel="noopener noreferrer" href="'+txDetailsUrl(REFERENCE_TX)+'">Xem giao dịch gốc trên Lora ↗</a>';
  }catch(e){featured.textContent='Chưa đọc được giao dịch tham chiếu từ Indexer: '+(e?.message||e)}
 }
 
@@ -94,8 +106,8 @@ async function updateActivity(){
    const node=document.createElement('div');node.className='row';
    const note=parseGeoNote(tx);const geo=!!note;
    const id=String(tx.id||'');
-   node.innerHTML='<div><strong>'+ (geo?'◈ GeoChain · ':'')+safe(tx['tx-type']||'Giao dịch')+'</strong> · '+safe(when(tx['round-time']))+'</div>'+
-   '<div>Round '+safe(tx['confirmed-round'])+' · '+safe(tx.fee)+' µALGO</div>'+ (geo?'<div>Mã thửa: '+safe(note.p)+' · SHA-256: '+safe(note.h)+'</div>':'')+
+   node.innerHTML='<div><strong>'+ (geo?'◈ GeoChain · ':'')+safe(tx['tx-type']==='pay'?'Chuyển ALGO':tx['tx-type']==='axfer'?'Chuyển tài sản':tx['tx-type']==='appl'?'Ứng dụng hợp đồng':tx['tx-type']||'Giao dịch')+'</strong> · '+safe(when(tx['round-time']))+'</div>'+
+   '<div>Round '+safe(tx['confirmed-round'])+' · Phí '+safe(Number(tx.fee||0)/1e6)+' ALGO</div>'+ (geo?'<div>Mã thửa: '+safe(note.p)+' · SHA-256: '+safe(note.h)+'</div>':'')+
    '<a target="_blank" rel="noopener noreferrer" href="https://lora.algokit.io/testnet/transaction/'+encodeURIComponent(id)+'">'+safe(id.slice(0,18))+'…</a>';
    list.appendChild(node);
  }
