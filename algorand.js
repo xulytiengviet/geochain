@@ -39,7 +39,45 @@ $('chain-send').addEventListener('click',async()=>{
  if(!round)throw Error('Giao dịch chưa được xác nhận');
  msg('Đã xác nhận TestNet (round '+round+'). SHA-256: '+digest);
  const link=$('chain-explorer');link.href='https://lora.algokit.io/testnet/transaction/'+encodeURIComponent(txid);link.textContent='Xem giao dịch '+txid.slice(0,12)+'…';link.hidden=false;
+    await updateActivity();
  }catch(e){msg('Chưa hoàn tất: '+(e?.message||e))}
  finally{busy=false;refresh()}
 });
 refresh();
+
+
+const indexerBase='https://testnet-idx.algonode.cloud';
+const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when=seconds=>seconds?new Date(Number(seconds)*1000).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—';
+const accountUrl='https://lora.algokit.io/testnet/account/'+MASTER;
+async function updateActivity(){
+ const button=$('tx-refresh');button.disabled=true;$('tx-summary').textContent='Đang tải hoạt động TestNet…';
+ try{
+ const [health,acct,response]=await Promise.all([
+   algod.status().do(),
+   fetch(indexerBase+'/v2/accounts/'+MASTER).then(r=>{if(!r.ok)throw Error('Indexer account HTTP '+r.status);return r.json()}),
+   fetch(indexerBase+'/v2/accounts/'+MASTER+'/transactions?limit=20').then(r=>{if(!r.ok)throw Error('Indexer transactions HTTP '+r.status);return r.json()})
+ ]);
+ $('network-status').textContent='● Algod + Indexer TestNet đã kết nối';
+ $('algo-round').textContent=String(health.lastRound??health['last-round']??'—');
+ const micro=acct.account?.amount??0;
+ $('algo-balance').textContent=(Number(micro)/1e6).toLocaleString('vi-VN',{maximumFractionDigits:6});
+ const txs=response.transactions||[];
+ $('tx-summary').textContent='Hiển thị '+txs.length+' giao dịch gần nhất · '+MASTER.slice(0,9)+'…';
+ const list=$('tx-list');list.replaceChildren();
+ if(!txs.length){list.textContent='Chưa có giao dịch được Indexer trả về.';return}
+ for(const tx of txs){
+   const node=document.createElement('div');node.className='row';
+   let geo=false;
+   try{const note=tx.note?JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(tx.note),c=>c.charCodeAt(0)))):null;geo=note?.v===1&&typeof note?.p==='string'&&typeof note?.h==='string';}catch{}
+   const id=String(tx.id||'');
+   node.innerHTML='<div><strong>'+ (geo?'◈ GeoChain · ':'')+safe(tx['tx-type']||'Giao dịch')+'</strong> · '+safe(when(tx['round-time']))+'</div>'+
+   '<div>Round '+safe(tx['confirmed-round'])+' · '+safe(tx.fee)+' µALGO</div>'+
+   '<a target="_blank" rel="noopener noreferrer" href="https://lora.algokit.io/testnet/transaction/'+encodeURIComponent(id)+'">'+safe(id.slice(0,18))+'…</a>';
+   list.appendChild(node);
+ }
+ }catch(e){$('network-status').textContent='Không truy cập được Algod/Indexer: '+(e?.message||e);$('tx-summary').textContent='Không có dữ liệu mới';}
+ finally{button.disabled=false}
+}
+$('tx-refresh').onclick=updateActivity;
+updateActivity();
