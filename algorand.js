@@ -39,8 +39,10 @@ $('faucet').addEventListener('click',()=>{if(!address)return;const link='https:/
 $('chain-send').addEventListener('click',async()=>{
  const feature=window.geochainSelectedParcel?.();if(!feature)return msg('Nhấp vào một polygon thửa đất trước.');if(busy)return;
  busy=true;refresh();$('chain-explorer').hidden=true;
+ let stage='kết nối ví';
  try{
  await ensureMasterConnected();
+ stage='tạo SHA-256 và giao dịch';
  const digest=await parcelDigest(feature);
  const note=encode({v:1,p:String(feature.properties.id),h:digest});
  const params=await algod.getTransactionParams().do();
@@ -49,16 +51,18 @@ $('chain-send').addEventListener('click',async()=>{
  msg('Xác nhận ký trên Lute TestNet…');
  const signed=await lute.signTxns([{txn:unsigned}]);
  if(!signed?.[0])throw Error('Ví không trả về chữ ký');
+ stage='gửi giao dịch Algod';
  const submitted=await algod.sendRawTransaction(signedBytes(signed[0])).do();
  const txid=submitted.txid||submitted.txId||txn.txID();
  msg('Đã gửi: '+txid+' · Đang chờ xác nhận…');
+ stage='chờ xác nhận';
  const confirmation=await algosdk.waitForConfirmation(algod,txid,8);
  const round=confirmation.confirmedRound??confirmation['confirmed-round'];
  if(!round)throw Error('Giao dịch chưa được xác nhận');
  msg('Đã xác nhận TestNet (round '+round+'). SHA-256: '+digest);
  const link=$('chain-explorer');link.href='https://lora.algokit.io/testnet/transaction/'+encodeURIComponent(txid);link.textContent='Xem giao dịch '+txid.slice(0,12)+'…';link.hidden=false;
     await updateActivity();
- }catch(e){msg('Chưa hoàn tất: '+(e?.message||e))}
+ }catch(e){console.error('GeoChain TestNet',stage,e);msg('Chưa hoàn tất tại bước '+stage+': '+(e?.message||e)+'. Mở F12 → Console để xem vị trí lỗi.')}
  finally{busy=false;refresh()}
 });
 refresh();
