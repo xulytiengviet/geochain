@@ -1,5 +1,5 @@
 import algosdk from 'https://esm.sh/algosdk@3.5.2';
-import { PeraWalletConnect } from 'https://esm.sh/@perawallet/connect@1.8.0?external=algosdk';
+import { PeraWalletConnect } from 'https://esm.sh/@perawallet/connect@1.8.0';
 const wallet = new PeraWalletConnect({chainId:416002});
 const algod = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
 let address = null;
