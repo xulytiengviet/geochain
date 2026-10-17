@@ -10,11 +10,10 @@ const hex=async v=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256
 const base64=u8=>{let s='';for(let i=0;i<u8.length;i++)s+=String.fromCharCode(u8[i]);return btoa(s)};
 const unbase64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 const refresh=()=>{$('wallet-connect').textContent=address?'Lute: '+address.slice(0,7)+'…'+address.slice(-5):'Kết nối Lute Wallet';$('chain-send').disabled=busy||!address||!window.geochainSelectedParcel?.();$('faucet').hidden=!address};
-const genesisId=async()=>{const g=await algod.genesis().do();return String(g.network)+'-'+String(g.id)};
 window.addEventListener('geochain:parcel-selected',refresh);
 $('wallet-connect').addEventListener('click',async()=>{
  if(address){address=null;msg('Đã ngắt phiên hiển thị. Kết nối lại Lute để ký.');refresh();return;}
- try{const id=await genesisId();if(id!=='testnet-v1.0')throw Error('Node chưa ở TestNet');const accounts=await lute.connect(id);address=accounts[0]||null;msg(address?'Đã kết nối Lute trên TestNet: '+address:'Chưa chọn tài khoản');}
+ try{const accounts=await lute.connect('testnet-v1.0');address=accounts[0]||null;msg(address?'Đã kết nối Lute trên TestNet: '+address:'Chưa chọn tài khoản');}
  catch(e){msg('Lỗi kết nối Lute: '+(e?.message||e))}
  refresh();
 });
