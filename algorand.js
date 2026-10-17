@@ -8,8 +8,11 @@ let address=null,busy=false;
 const msg=s=>{$('chain-status').textContent=s};
 const encode=v=>new TextEncoder().encode(JSON.stringify(v));
 const hex=async v=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',v)),b=>b.toString(16).padStart(2,'0')).join('');
+const parcelPayload=f=>({schema:'geochain-parcel-v1',feature:f});
+const parcelDigest=async f=>hex(encode(parcelPayload(f)));
+window.geochainDigest=parcelDigest;
 const base64=u8=>{let s='';for(let i=0;i<u8.length;i++)s+=String.fromCharCode(u8[i]);return btoa(s)};
-const unbase64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const signedBytes=value=>{if(value instanceof Uint8Array)return value;if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);if(value instanceof ArrayBuffer)return new Uint8Array(value);if(Array.isArray(value))return Uint8Array.from(value);if(typeof value==='string')return Uint8Array.from(atob(value),c=>c.charCodeAt(0));throw Error('Lute trả chữ ký sai định dạng');};
 const refresh=()=>{$('wallet-connect').textContent=address?'Lute: '+address.slice(0,7)+'…'+address.slice(-5):'Kết nối Lute Wallet';$('chain-send').disabled=busy||!window.geochainSelectedParcel?.();$('faucet').hidden=!address};
 window.addEventListener('geochain:parcel-selected',refresh);
 async function ensureMasterConnected(){
@@ -38,7 +41,7 @@ $('chain-send').addEventListener('click',async()=>{
  busy=true;refresh();$('chain-explorer').hidden=true;
  try{
  await ensureMasterConnected();
- const digest=await hex(encode({schema:'geochain-parcel-v1',feature}));
+ const digest=await parcelDigest(feature);
  const note=encode({v:1,p:String(feature.properties.id),h:digest});
  const params=await algod.getTransactionParams().do();
  const txn=algosdk.makePaymentTxnWithSuggestedParamsFromObject({sender:address,receiver:address,amount:0n,note,suggestedParams:params});
@@ -46,7 +49,7 @@ $('chain-send').addEventListener('click',async()=>{
  msg('Xác nhận ký trên Lute TestNet…');
  const signed=await lute.signTxns([{txn:unsigned,signers:[MASTER]}]);
  if(!signed?.[0])throw Error('Ví không trả về chữ ký');
- const submitted=await algod.sendRawTransaction(unbase64(signed[0])).do();
+ const submitted=await algod.sendRawTransaction(signedBytes(signed[0])).do();
  const txid=submitted.txid||submitted.txId||txn.txID();
  msg('Đã gửi: '+txid+' · Đang chờ xác nhận…');
  const confirmation=await algosdk.waitForConfirmation(algod,txid,8);
