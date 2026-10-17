@@ -50,6 +50,29 @@ const indexerBase='https://testnet-idx.algonode.cloud';
 const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const when=seconds=>seconds?new Date(Number(seconds)*1000).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—';
 const accountUrl='https://lora.algokit.io/testnet/account/'+MASTER;
+
+const REFERENCE_TX='RRXXC7LIVBYZBKZ5AHV5RNVHOP3QWQL3ABQRPOGOJ6SPAYW5FS5A';
+const txDetailsUrl=id=>'https://lora.algokit.io/testnet/transaction/'+encodeURIComponent(id);
+function parseGeoNote(tx){
+ try{
+  if(!tx.note)return null;
+  const raw=Uint8Array.from(atob(tx.note),c=>c.charCodeAt(0));
+  const parsed=JSON.parse(new TextDecoder().decode(raw));
+  return parsed?.v===1&&typeof parsed.p==='string'&&/^[0-9a-f]{64}$/i.test(parsed.h||'')?parsed:null;
+ }catch{return null}
+}
+async function showReference(){
+ const featured=$('tx-featured');
+ try{
+  const response=await fetch(indexerBase+'/v2/transactions/'+REFERENCE_TX);
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const {transaction:t}=await response.json();
+  if(!t||!(t.sender===MASTER||t['payment-transaction']?.receiver===MASTER))throw Error('Giao dịch không thuộc ví chủ');
+  const note=parseGeoNote(t);
+  featured.innerHTML='<strong>Giao dịch tham chiếu đã xác nhận</strong><div>TXID: <a target="_blank" rel="noopener noreferrer" href="'+txDetailsUrl(REFERENCE_TX)+'">'+REFERENCE_TX+'</a></div><div>Round: '+safe(t['confirmed-round'])+' · '+safe(when(t['round-time']))+' · phí '+safe(t.fee)+' µALGO</div><div>'+ (note?'◈ GeoChain · Mã thửa '+safe(note.p)+' · Hash '+safe(note.h):'Giao dịch ví TestNet thông thường — chưa có bằng chứng GeoChain trong note; không thể đồng bộ với một thửa cụ thể') +'</div>';
+ }catch(e){featured.textContent='Chưa đọc được giao dịch tham chiếu từ Indexer: '+(e?.message||e)}
+}
+
 async function updateActivity(){
  const button=$('tx-refresh');button.disabled=true;$('tx-summary').textContent='Đang tải hoạt động TestNet…';
  try{
@@ -63,16 +86,16 @@ async function updateActivity(){
  const micro=acct.account?.amount??0;
  $('algo-balance').textContent=(Number(micro)/1e6).toLocaleString('vi-VN',{maximumFractionDigits:6});
  const txs=response.transactions||[];
+ await showReference();
  $('tx-summary').textContent='Hiển thị '+txs.length+' giao dịch gần nhất · '+MASTER.slice(0,9)+'…';
  const list=$('tx-list');list.replaceChildren();
  if(!txs.length){list.textContent='Chưa có giao dịch được Indexer trả về.';return}
  for(const tx of txs){
    const node=document.createElement('div');node.className='row';
-   let geo=false;
-   try{const note=tx.note?JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(tx.note),c=>c.charCodeAt(0)))):null;geo=note?.v===1&&typeof note?.p==='string'&&typeof note?.h==='string';}catch{}
+   const note=parseGeoNote(tx);const geo=!!note;
    const id=String(tx.id||'');
    node.innerHTML='<div><strong>'+ (geo?'◈ GeoChain · ':'')+safe(tx['tx-type']||'Giao dịch')+'</strong> · '+safe(when(tx['round-time']))+'</div>'+
-   '<div>Round '+safe(tx['confirmed-round'])+' · '+safe(tx.fee)+' µALGO</div>'+
+   '<div>Round '+safe(tx['confirmed-round'])+' · '+safe(tx.fee)+' µALGO</div>'+ (geo?'<div>Mã thửa: '+safe(note.p)+' · SHA-256: '+safe(note.h)+'</div>':'')+
    '<a target="_blank" rel="noopener noreferrer" href="https://lora.algokit.io/testnet/transaction/'+encodeURIComponent(id)+'">'+safe(id.slice(0,18))+'…</a>';
    list.appendChild(node);
  }
