@@ -1,8 +1,9 @@
 import algosdk from 'https://esm.sh/algosdk@3.5.2';
-import LuteConnect from 'https://esm.sh/@galaxypay/lute-connect';
+import LuteConnect from 'https://esm.sh/lute-connect';
 const lute=new LuteConnect();
 const algod=new algosdk.Algodv2('','https://testnet-api.algonode.cloud','');
 const $=id=>document.getElementById(id);
+const MASTER='6S4SCSMSK7OUJZPQCEKDQK7UT6IW3OVRDT4QN2CBBS4WC6WECDRS2YWC4I';
 let address=null,busy=false;
 const msg=s=>{$('chain-status').textContent=s};
 const encode=v=>new TextEncoder().encode(JSON.stringify(v));
@@ -13,13 +14,13 @@ const refresh=()=>{$('wallet-connect').textContent=address?'Lute: '+address.slic
 window.addEventListener('geochain:parcel-selected',refresh);
 $('wallet-connect').addEventListener('click',async()=>{
  if(address){address=null;msg('Đã ngắt phiên hiển thị. Kết nối lại Lute để ký.');refresh();return;}
- try{const accounts=await lute.connect('testnet-v1.0');address=accounts[0]||null;msg(address?'Đã kết nối Lute trên TestNet: '+address:'Chưa chọn tài khoản');}
+ try{const accounts=await lute.connect('testnet-v1.0');const chosen=accounts.find(a=>a===MASTER);if(!chosen){address=null;throw Error('Hãy chọn ví chủ '+MASTER+' trong Lute (ví khác không được phép ghi)');}address=chosen;msg('Đã kết nối đúng ví chủ trên TestNet: '+address);}
  catch(e){msg('Lỗi kết nối Lute: '+(e?.message||e))}
  refresh();
 });
 $('faucet').addEventListener('click',()=>{if(!address)return;const link='https://dispenser.testnet.aws.algodev.network/';navigator.clipboard?.writeText(address).catch(()=>{});window.open(link,'_blank','noopener');msg('Đã mở faucet TestNet và sao chép địa chỉ ví (nếu trình duyệt cho phép). Dán địa chỉ ví vào faucet để nhận ALGO thử nghiệm.')});
 $('chain-send').addEventListener('click',async()=>{
- const feature=window.geochainSelectedParcel?.();if(!feature)return msg('Nhấp vào một polygon thửa đất trước.');if(!address)return msg('Kết nối Lute Wallet trước.');if(busy)return;
+ const feature=window.geochainSelectedParcel?.();if(!feature)return msg('Nhấp vào một polygon thửa đất trước.');if(!address)return msg('Kết nối ví chủ Lute Wallet trước.');if(address!==MASTER)return msg('Chỉ ví chủ được ghi TestNet.');if(busy)return;
  busy=true;refresh();$('chain-explorer').hidden=true;
  try{
  const digest=await hex(encode({schema:'geochain-parcel-v1',feature}));
@@ -28,7 +29,7 @@ $('chain-send').addEventListener('click',async()=>{
  const txn=algosdk.makePaymentTxnWithSuggestedParamsFromObject({sender:address,receiver:address,amount:0n,note,suggestedParams:params});
  const unsigned=base64(algosdk.encodeUnsignedTransaction(txn));
  msg('Xác nhận ký trên Lute TestNet…');
- const signed=await lute.signTxns([{txn:unsigned}]);
+ const signed=await lute.signTxns([{txn:unsigned,signers:[MASTER]}]);
  if(!signed?.[0])throw Error('Ví không trả về chữ ký');
  const submitted=await algod.sendRawTransaction(unbase64(signed[0])).do();
  const txid=submitted.txid||submitted.txId||txn.txID();
