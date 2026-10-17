@@ -10,19 +10,34 @@ const encode=v=>new TextEncoder().encode(JSON.stringify(v));
 const hex=async v=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',v)),b=>b.toString(16).padStart(2,'0')).join('');
 const base64=u8=>{let s='';for(let i=0;i<u8.length;i++)s+=String.fromCharCode(u8[i]);return btoa(s)};
 const unbase64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
-const refresh=()=>{$('wallet-connect').textContent=address?'Lute: '+address.slice(0,7)+'…'+address.slice(-5):'Kết nối Lute Wallet';$('chain-send').disabled=busy||!address||!window.geochainSelectedParcel?.();$('faucet').hidden=!address};
+const refresh=()=>{$('wallet-connect').textContent=address?'Lute: '+address.slice(0,7)+'…'+address.slice(-5):'Kết nối Lute Wallet';$('chain-send').disabled=busy||!window.geochainSelectedParcel?.();$('faucet').hidden=!address};
 window.addEventListener('geochain:parcel-selected',refresh);
+async function ensureMasterConnected(){
+ if(address===MASTER)return MASTER;
+ msg('Đang kết nối Lute Wallet với ví chủ trên TestNet…');
+ const accounts=await lute.connect('testnet-v1.0');
+ const authorized=(accounts||[]).map(a=>typeof a==='string'?a:a?.address).filter(Boolean);
+ if(!authorized.includes(MASTER)){
+   address=null;refresh();
+   throw Error('Lute chưa cấp quyền ký cho ví chủ 6S4S…WC4I. Hãy chọn đúng tài khoản trong cửa sổ Lute.');
+ }
+ address=MASTER;refresh();
+ msg('Đã kết nối ví chủ. Sẵn sàng xác nhận giao dịch.');
+ return MASTER;
+}
 $('wallet-connect').addEventListener('click',async()=>{
- if(address){address=null;msg('Đã ngắt phiên hiển thị. Kết nối lại Lute để ký.');refresh();return;}
- try{const accounts=await lute.connect('testnet-v1.0');const chosen=accounts.find(a=>a===MASTER);if(!chosen){address=null;throw Error('Hãy chọn ví chủ '+MASTER+' trong Lute (ví khác không được phép ghi)');}address=chosen;msg('Đã kết nối đúng ví chủ trên TestNet: '+address);}
- catch(e){msg('Lỗi kết nối Lute: '+(e?.message||e))}
+ try {
+   if(address){address=null;msg('Đã ngắt kết nối hiển thị.');}
+   else await ensureMasterConnected();
+ }catch(e){msg('Không kết nối được Lute: '+(e?.message||e))}
  refresh();
 });
 $('faucet').addEventListener('click',()=>{if(!address)return;const link='https://dispenser.testnet.aws.algodev.network/';navigator.clipboard?.writeText(address).catch(()=>{});window.open(link,'_blank','noopener');msg('Đã mở faucet TestNet và sao chép địa chỉ ví (nếu trình duyệt cho phép). Dán địa chỉ ví vào faucet để nhận ALGO thử nghiệm.')});
 $('chain-send').addEventListener('click',async()=>{
- const feature=window.geochainSelectedParcel?.();if(!feature)return msg('Nhấp vào một polygon thửa đất trước.');if(!address)return msg('Kết nối ví chủ Lute Wallet trước.');if(address!==MASTER)return msg('Chỉ ví chủ được ghi TestNet.');if(busy)return;
+ const feature=window.geochainSelectedParcel?.();if(!feature)return msg('Nhấp vào một polygon thửa đất trước.');if(busy)return;
  busy=true;refresh();$('chain-explorer').hidden=true;
  try{
+ await ensureMasterConnected();
  const digest=await hex(encode({schema:'geochain-parcel-v1',feature}));
  const note=encode({v:1,p:String(feature.properties.id),h:digest});
  const params=await algod.getTransactionParams().do();
